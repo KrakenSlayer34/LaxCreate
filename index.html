@@ -1,0 +1,381 @@
+import React, { useState, useRef, useEffect } from "react";
+
+const FIELD_IMG =
+  "https://cdn.sportrebel.pl/photos/tablica-trenerska-fox40-lacrosse-1_170x270.jpg";
+
+function DraggablePlayer({ player, onDrag, onNameChange, onStartArrow }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(player.name);
+
+  function handleDoubleClick(e) {
+    e.stopPropagation();
+    setEditing(true);
+  }
+  function handleBlur() {
+    setEditing(false);
+    onNameChange(player.id, name.trim() || player.name);
+  }
+  function handleChange(e) {
+    setName(e.target.value);
+  }
+
+  return (
+    <g
+      onMouseDown={(e) => onDrag(player.id, e)}
+      onDoubleClick={handleDoubleClick}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onStartArrow(player.id, e);
+      }}
+      style={{ cursor: "pointer" }}
+    >
+      <circle cx={player.x} cy={player.y} r={20} fill="#0b79f7" />
+      {editing ? (
+        <foreignObject x={player.x - 40} y={player.y - 35} width={80} height={30}>
+          <input
+            style={{ width: "100%", fontSize: 14, textAlign: "center" }}
+            value={name}
+            onChange={handleChange}
+            onBlur={handleBlur}
+            autoFocus
+          />
+        </foreignObject>
+      ) : (
+        <text
+          x={player.x}
+          y={player.y + 5}
+          fill="#fff"
+          fontWeight="bold"
+          fontSize="16"
+          textAnchor="middle"
+          userSelect="none"
+        >
+          {player.name}
+        </text>
+      )}
+    </g>
+  );
+}
+
+function Arrow({ from, to, type }) {
+  if (!from || !to) return null;
+
+  const strokeDasharray = type === "passing" ? "8,6" : "0";
+
+  const headlen = 12;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const angle = Math.atan2(dy, dx);
+
+  const lineEndX = to.x - headlen * Math.cos(angle);
+  const lineEndY = to.y - headlen * Math.sin(angle);
+
+  const arrowPoint1X = to.x - headlen * Math.cos(angle - Math.PI / 6);
+  const arrowPoint1Y = to.y - headlen * Math.sin(angle - Math.PI / 6);
+  const arrowPoint2X = to.x - headlen * Math.cos(angle + Math.PI / 6);
+  const arrowPoint2Y = to.y - headlen * Math.sin(angle + Math.PI / 6);
+
+  return (
+    <g>
+      <line
+        x1={from.x}
+        y1={from.y}
+        x2={lineEndX}
+        y2={lineEndY}
+        stroke="#e63946"
+        strokeWidth={3}
+        strokeDasharray={strokeDasharray}
+      />
+      <polygon
+        points={`${to.x},${to.y} ${arrowPoint1X},${arrowPoint1Y} ${arrowPoint2X},${arrowPoint2Y}`}
+        fill="#e63946"
+      />
+    </g>
+  );
+}
+
+export default function LacrosseStrategyBoard() {
+  const [players, setPlayers] = useState([
+    { id: 1, name: "P1", x: 350, y: 400 },
+    { id: 2, name: "P2", x: 600, y: 400 },
+    { id: 3, name: "P3", x: 475, y: 700 },
+  ]);
+  const [draggingId, setDraggingId] = useState(null);
+
+  const [ball, setBall] = useState({ x: 500, y: 500 });
+  const [draggingBall, setDraggingBall] = useState(false);
+
+  const [arrows, setArrows] = useState([]);
+
+  const [drawingArrow, setDrawingArrow] = useState(null);
+
+  const [arrowType, setArrowType] = useState("movement");
+
+  const [folders, setFolders] = useState([
+    { id: 1, title: "Default Folder", plays: ["Play 1", "Play 2"] },
+  ]);
+  const [selectedFolderId, setSelectedFolderId] = useState(1);
+
+  const svgRef = useRef(null);
+
+  function startDrag(id, e) {
+    e.stopPropagation();
+    setDraggingId(id);
+  }
+
+  function startDragBall(e) {
+    e.stopPropagation();
+    setDraggingBall(true);
+  }
+
+  function onMouseMove(e) {
+    if (!draggingId && !drawingArrow && !draggingBall) return;
+
+    const rect = svgRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (draggingId) {
+      setPlayers((pl) =>
+        pl.map((p) => (p.id === draggingId ? { ...p, x, y } : p))
+      );
+    } else if (drawingArrow) {
+      setDrawingArrow({ ...drawingArrow, x, y });
+    } else if (draggingBall) {
+      setBall({ x, y });
+    }
+  }
+
+  function onMouseUp(e) {
+    if (draggingId) setDraggingId(null);
+    if (draggingBall) setDraggingBall(false);
+
+    if (drawingArrow) {
+      const rect = svgRef.current.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      let targetPlayer = null;
+      for (const p of players) {
+        const dist = Math.hypot(p.x - mouseX, p.y - mouseY);
+        if (dist < 25 && p.id !== drawingArrow.fromId) {
+          targetPlayer = p;
+          break;
+        }
+      }
+      if (targetPlayer) {
+        setArrows((a) => [
+          ...a,
+          { fromId: drawingArrow.fromId, toId: targetPlayer.id, type: drawingArrow.type },
+        ]);
+      }
+      setDrawingArrow(null);
+    }
+  }
+
+  function changeName(id, newName) {
+    setPlayers((pl) =>
+      pl.map((p) => (p.id === id ? { ...p, name: newName } : p))
+    );
+  }
+
+  function startArrowDraw(id, e) {
+    e.preventDefault();
+    setDrawingArrow({ fromId: id, x: 0, y: 0, type: arrowType });
+  }
+
+  function addFolder() {
+    const newFolder = {
+      id: Date.now(),
+      title: "New Folder",
+      plays: [],
+    };
+    setFolders((f) => [...f, newFolder]);
+    setSelectedFolderId(newFolder.id);
+  }
+  function renameFolder(id, newTitle) {
+    setFolders((f) =>
+      f.map((folder) => (folder.id === id ? { ...folder, title: newTitle } : folder))
+    );
+  }
+
+  function FolderItem({ folder, selected, onSelect, onRename }) {
+    const [editing, setEditing] = useState(false);
+    const [title, setTitle] = useState(folder.title);
+
+    function handleDoubleClick() {
+      setEditing(true);
+    }
+    function handleBlur() {
+      setEditing(false);
+      onRename(folder.id, title.trim() || folder.title);
+    }
+    function handleChange(e) {
+      setTitle(e.target.value);
+    }
+    return (
+      <div
+        onClick={onSelect}
+        style={{
+          padding: "6px 10px",
+          marginBottom: 6,
+          borderRadius: 4,
+          background: selected ? "#457b9d" : "transparent",
+          cursor: "pointer",
+          userSelect: "none",
+          color: "white",
+        }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          handleDoubleClick();
+        }}
+      >
+        {editing ? (
+          <input
+            autoFocus
+            value={title}
+            onChange={handleChange}
+            onBlur={handleBlur}
+            style={{ width: "100%", fontSize: 14 }}
+          />
+        ) : (
+          folder.title
+        )}
+      </div>
+    );
+  }
+
+  const selectedFolder = folders.find((f) => f.id === selectedFolderId);
+
+  // Image aspect ratio ~170:270 = 0.63 width/height
+  // Make the field large but fitting vertically on screen, e.g. height 900px, width 567px
+  const fieldHeight = 900;
+  const fieldWidth = fieldHeight * 0.63;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        height: "100vh",
+        fontFamily: "Arial, sans-serif",
+        userSelect: "none",
+        background: "#121212",
+        color: "white",
+      }}
+    >
+      <div
+        style={{
+          width: 280,
+          background: "#1d3557",
+          color: "#f1faee",
+          padding: 16,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <h1 style={{ marginTop: 0, textAlign: "center", marginBottom: 20 }}>
+          My Plays
+        </h1>
+        <h3>Folders & Plays</h3>
+        <div style={{ flex: 1, overflowY: "auto", color: "white" }}>
+          {folders.map((folder) => (
+            <FolderItem
+              key={folder.id}
+              folder={folder}
+              selected={folder.id === selectedFolderId}
+              onSelect={() => setSelectedFolderId(folder.id)}
+              onRename={renameFolder}
+            />
+          ))}
+        </div>
+        <button
+          onClick={addFolder}
+          style={{
+            marginTop: 10,
+            padding: "8px 12px",
+            background: "#a8dadc",
+            border: "none",
+            borderRadius: 4,
+            cursor: "pointer",
+            fontWeight: "bold",
+            color: "#1d3557",
+          }}
+        >
+          + Add Folder
+        </button>
+        <div style={{ marginTop: 24 }}>
+          <label>
+            <input
+              type="radio"
+              checked={arrowType === "movement"}
+              onChange={() => setArrowType("movement")}
+            />{" "}
+            Movement Arrow
+          </label>
+          <br />
+          <label>
+            <input
+              type="radio"
+              checked={arrowType === "passing"}
+              onChange={() => setArrowType("passing")}
+            />{" "}
+            Passing Arrow
+          </label>
+        </div>
+        <div style={{ marginTop: 20, fontSize: 12, color: "#a8dadc" }}>
+          Right-click a player to start drawing an arrow.
+        </div>
+      </div>
+
+      <svg
+        ref={svgRef}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+        width={fieldWidth}
+        height={fieldHeight}
+        style={{ background: `url(${FIELD_IMG}) no-repeat center/contain` }}
+      >
+        {/* Ball */}
+        <circle
+          cx={ball.x}
+          cy={ball.y}
+          r={12}
+          fill="#e76f51"
+          onMouseDown={startDragBall}
+          style={{ cursor: "grab" }}
+        />
+
+        {/* Players */}
+        {players.map((player) => (
+          <DraggablePlayer
+            key={player.id}
+            player={player}
+            onDrag={startDrag}
+            onNameChange={changeName}
+            onStartArrow={startArrowDraw}
+          />
+        ))}
+
+        {/* Arrows */}
+        {arrows.map((arrow, idx) => {
+          const from = players.find((p) => p.id === arrow.fromId);
+          const to = players.find((p) => p.id === arrow.toId);
+          return <Arrow key={idx} from={from} to={to} type={arrow.type} />;
+        })}
+
+        {/* Drawing Arrow */}
+        {drawingArrow && (() => {
+          const fromPlayer = players.find((p) => p.id === drawingArrow.fromId);
+          return (
+            <Arrow
+              from={fromPlayer}
+              to={{ x: drawingArrow.x, y: drawingArrow.y }}
+              type={drawingArrow.type}
+            />
+          );
+        })()}
+      </svg>
+    </div>
+  );
+}
