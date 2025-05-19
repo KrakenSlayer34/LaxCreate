@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lacrosse Strategy Board</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    canvas { border: 1px solid black; background: #f9f9f9; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h2>Lacrosse Strategy Board</h2>
+  <canvas id="board" width="800" height="600"></canvas>
+
+  <!-- React and ReactDOM CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+
+  <!-- Your React code -->
+  <script type="text/javascript">
+    const { useState, useEffect, useRef } = React;
+
+    const PLAYER_RADIUS = 15;
+
+    function LacrosseBoard() {
+      const canvasRef = useRef(null);
+      const [players, setPlayers] = useState([
+        { id: 1, x: 100, y: 100, color: "blue" },
+        { id: 2, x: 200, y: 150, color: "red" },
+      ]);
+      const [draggingPlayerId, setDraggingPlayerId] = useState(null);
+
+      useEffect(() => {
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        players.forEach(({ x, y, color }) => {
+          ctx.beginPath();
+          ctx.arc(x, y, PLAYER_RADIUS, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.stroke();
+        });
+      }, [players]);
+
+      function getPlayerAtPosition(x, y) {
+        return players.find(
+          (p) => Math.hypot(p.x - x, p.y - y) < PLAYER_RADIUS
+        );
+      }
+
+      function onMouseDown(e) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const player = getPlayerAtPosition(x, y);
+        if (player) setDraggingPlayerId(player.id);
+      }
+
+      function onMouseMove(e) {
+        if (draggingPlayerId === null) return;
+        const rect = canvasRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        setPlayers((players) =>
+          players.map((p) =>
+            p.id === draggingPlayerId ? { ...p, x, y } : p
+          )
+        );
+      }
+
+      function onMouseUp() {
+        setDraggingPlayerId(null);
+      }
+
+      return React.createElement(
+        "canvas",
+        {
+          ref: canvasRef,
+          width: 800,
+          height: 600,
+          style: { border: "1px solid black", background: "#f9f9f9", cursor: "pointer" },
+          onMouseDown,
+          onMouseMove,
+          onMouseUp,
+          onMouseLeave: onMouseUp,
+        }
+      );
+    }
+
+    const rootElem = document.getElementById("board");
+    ReactDOM.createRoot(rootElem).render(React.createElement(LacrosseBoard));
+  </script>
+</body>
+</html>
